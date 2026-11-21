@@ -27,6 +27,7 @@
   .sym:hover{ background:var(--card-h); transform:translateY(-3px); box-shadow:0 8px 22px rgba(0,0,0,.35); border-color:var(--accent); }
   .sym:active{ transform:translateY(0) scale(.97); }
   .sym .glyph{ font-size:34px; line-height:1; font-weight:600; }
+  .sym .glyph svg{ width:36px; height:36px; display:block; }
   .sym .code{ margin-top:8px; font-size:11px; color:var(--muted); font-variant-numeric:tabular-nums; }
   .sym .name{ margin-top:2px; font-size:11px; color:#64748b; }
   .toast{
@@ -52,6 +53,7 @@
 
 <script>
   // 符号数据：glyph 字符、name 名称、code 编码说明
+  // 钢筋级别符号为工程字体图形（无 Unicode 码位），用 body(SVG 路径) 描述，点击复制为图片
   const SYMBOLS = [
     {g:'★', n:'实心五角星', c:'U+2605'},
     {g:'❤', n:'红心',       c:'U+2764'},
@@ -74,18 +76,30 @@
     {g:'δ', n:'小写Δ/delta', c:'U+03B4'},
     {g:'π', n:'圆周率',     c:'U+03C0'},
     {g:'η', n:'希腊η/eta',  c:'U+03B7'},
-    {g:'°', n:'度符号',     c:'U+00B0'}
+    {g:'°', n:'度符号',     c:'U+00B0'},
+    {g:'±', n:'正负号',     c:'U+00B1'},
+    {body:'<circle cx="20" cy="20" r="11"/><line x1="20" y1="2" x2="20" y2="38"/>', n:'一级 HPB300', c:'钢筋·光圆'},
+    {body:'<circle cx="20" cy="20" r="11"/><line x1="20" y1="2" x2="20" y2="38"/><line x1="9" y1="35" x2="31" y2="35"/>', n:'二级 HRB335', c:'钢筋·带肋'},
+    {body:'<circle cx="20" cy="20" r="11"/><line x1="16" y1="2" x2="16" y2="38"/><line x1="24" y1="2" x2="24" y2="38"/><line x1="9" y1="35" x2="31" y2="35"/>', n:'三级 HRB400', c:'钢筋·带肋'},
+    {body:'<circle cx="20" cy="20" r="11"/><line x1="16" y1="2" x2="16" y2="38"/><line x1="24" y1="2" x2="24" y2="38"/><line x1="9" y1="35" x2="31" y2="35"/><line x1="9" y1="5" x2="31" y2="5"/>', n:'四级 HRB500', c:'钢筋·带肋'}
   ];
 
   const grid = document.getElementById('grid');
   const toast = document.getElementById('toast');
   document.getElementById('count').textContent = SYMBOLS.length;
 
+  const SVG_OPEN = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round">';
+
   SYMBOLS.forEach(s=>{
     const el = document.createElement('div');
     el.className = 'sym';
-    el.innerHTML = '<div class="glyph">'+s.g+'</div><div class="code">'+s.c+'</div><div class="name">'+s.n+'</div>';
-    el.addEventListener('click', ()=> copy(s.g));
+    if(s.body){
+      el.innerHTML = '<div class="glyph">'+SVG_OPEN+s.body+'</svg></div><div class="code">'+s.c+'</div><div class="name">'+s.n+'</div>';
+      el.addEventListener('click', ()=> copyRebar(s));
+    } else {
+      el.innerHTML = '<div class="glyph">'+s.g+'</div><div class="code">'+s.c+'</div><div class="name">'+s.n+'</div>';
+      el.addEventListener('click', ()=> copy(s.g));
+    }
     grid.appendChild(el);
   });
 
@@ -116,6 +130,34 @@
     try { document.execCommand('copy'); } catch(e){}
     document.body.removeChild(ta);
     done();
+  }
+
+  // 钢筋符号：转成 PNG 图片写入剪贴板，便于粘贴到 Word 等文档；不支持时退化为复制名称文字
+  function copyRebar(s){
+    const label = s.c + ' ' + s.n;
+    const fail = ()=> copy(label);
+    const svgText = SVG_OPEN.replace('stroke="currentColor"', 'stroke="#000000"').replace('<svg ', '<svg width="240" height="240" ') + s.body + '</svg>';
+    const url = URL.createObjectURL(new Blob([svgText], {type:'image/svg+xml;charset=utf-8'}));
+    const img = new Image();
+    img.onload = ()=>{
+      try {
+        const canvas = document.createElement('canvas');
+        canvas.width = 240; canvas.height = 240;
+        const ctx = canvas.getContext('2d');
+        ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, 240, 240);
+        ctx.drawImage(img, 0, 0, 240, 240);
+        canvas.toBlob(blob=>{
+          URL.revokeObjectURL(url);
+          if(blob && navigator.clipboard && navigator.clipboard.write && window.ClipboardItem){
+            navigator.clipboard.write([new ClipboardItem({'image/png': blob})])
+              .then(()=> showToast('已复制钢筋符号图片：'+s.c))
+              .catch(fail);
+          } else { fail(); }
+        }, 'image/png');
+      } catch(e){ URL.revokeObjectURL(url); fail(); }
+    };
+    img.onerror = ()=>{ URL.revokeObjectURL(url); fail(); };
+    img.src = url;
   }
 </script>
 </body>
